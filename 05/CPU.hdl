@@ -1,0 +1,89 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+/**
+ * The Hack Central Processing unit (CPU).
+ * Parses the binary code in the instruction input and executes it according to the
+ * Hack machine language specification. In the case of a C-instruction, computes the
+ * function specified by the instruction. If the instruction specifies to read a memory
+ * value, the inM input is expected to contain this value. If the instruction specifies
+ * to write a value to the memory, sets the outM output to this value, sets the addressM
+ * output to the target address, and asserts the writeM output (when writeM == 0, any
+ * value may appear in outM).
+ * If the reset input is 0, computes the address of the next instruction and sets the
+ * pc output to that value. If the reset input is 1, sets pc to 0.
+ * Note: The outM and writeM outputs are combinational: they are affected by the
+ * instruction's execution during the current cycle. The addressM and pc outputs are
+ * clocked: although they are affected by the instruction's execution, they commit to
+ * their new values only in the next cycle.
+ */
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to restart the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // Address of next instruction
+
+    PARTS:
+        // write bits - only active if it's C instruction
+        And(a=instruction[15], b=instruction[3], out=writeM);
+        And(a=instruction[15], b=instruction[4], out=storeD);
+        And(a=instruction[15], b=instruction[5], out=aluStoreA);
+        // we also write A if it's A instruction
+        Not(in=instruction[15], out=instA);
+        Or(a=aluStoreA, b=instA, out=storeA);
+
+        Mux16(a=instruction, b=outALU, sel=instruction[15], out=inA);
+        ARegister(in=inA, load=storeA, out=outA);
+
+        Mux16(a=outA, b=inM, sel=instruction[12], out=y);
+
+        DRegister(in=outALU, load=storeD, out=x);
+
+        Or16(a=outA, b=false, out[0..14]=addressM);
+
+        Or(a=reset, b=jump, out=loadPC);
+        Not(in=loadPC, out=incPC);
+        PC(in=outA, load=loadPC, inc=incPC, reset=reset, out[0..14]=pc);
+        ALU(x=x, y=y, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=outALU, zr=zr, ng=ng);
+
+        Or16(a=outALU, b=false, out=outM);
+
+        // jumps
+        // if jump = true, we load the address from ARegister to PC
+
+        // is C instruction?
+        And(a=instruction[15], b=true, out=c);
+
+        // should jump on 0?
+        And(a=c, b=instruction[1], out=jumpZero);
+
+        // should jump on < 0?
+        And(a=c, b=instruction[2], out=jumpLess);
+
+        // should jump on > 0?
+        And(a=c, b=instruction[0], out=jumpMore);
+
+        // should actually jump?
+        // we should jump on 0 and the result is 0
+        And(a=jumpZero, b=zr, out=jumpA);
+        // we should jump on < 0 and the result is < 0
+        And(a=jumpLess, b=ng, out=jumpB);
+
+        // we should jump on > 0 and the result is > 0
+        Not(in=ng, out=nl);
+        Not(in=zr, out=nzr);
+        And(a=nl, b=nzr, out=gz);
+        And(a=jumpMore, b=gz, out=jumpC);
+
+        // merge jump pins
+        Or(a=jumpA, b=jumpB, out=jumpLeft);
+        Or(a=jumpLeft, b=jumpC, out=jump);
+}

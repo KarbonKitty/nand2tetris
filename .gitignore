@@ -1,0 +1,14 @@
+# Ignore everything...
+*
+
+# ...but not directories, so git recurses into them...
+!*/
+
+#...and not .gitignore...
+!.gitignore
+
+!01/*.hdl
+!02/*.hdl
+!03/**/*.hdl
+!04/**/*.asm
+!05/*.hdl

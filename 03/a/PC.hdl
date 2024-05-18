@@ -1,0 +1,64 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/03/a/PC.hdl
+/**
+ * A 16-bit counter with reset, load, and inc control bits.
+ * if      (reset(t) == 1) out(t+1) = 0
+ * else if (load(t) == 1)  out(t+1) = in(t)
+ * else if (inc(t) == 1)   out(t+1) = out(t) + 1
+ * else                    out(t+1) = out(t)
+ */
+
+CHIP PC {
+    IN in[16], load, inc, reset;
+    OUT out[16];
+
+    PARTS:
+        Not(in=reset, out=notReset);
+        Or(a=reset, b=load, out=x);
+        Not(in=x, out=store);
+
+        And(a=in[0], b=notReset, out=a0);
+        And(a=in[1], b=notReset, out=a1);
+        And(a=in[2], b=notReset, out=a2);
+        And(a=in[3], b=notReset, out=a3);
+        And(a=in[4], b=notReset, out=a4);
+        And(a=in[5], b=notReset, out=a5);
+        And(a=in[6], b=notReset, out=a6);
+        And(a=in[7], b=notReset, out=a7);
+        And(a=in[8], b=notReset, out=a8);
+        And(a=in[9], b=notReset, out=a9);
+        And(a=in[10], b=notReset, out=a10);
+        And(a=in[11], b=notReset, out=a11);
+        And(a=in[12], b=notReset, out=a12);
+        And(a=in[13], b=notReset, out=a13);
+        And(a=in[14], b=notReset, out=a14);
+        And(a=in[15], b=notReset, out=a15);
+
+        Mux16(a[0]=a0, a[1]=a1, a[2]=a2, a[3]=a3, a[4]=a4, a[5]=a5, a[6]=a6, a[7]=a7, a[8]=a8, a[9]=a9, a[10]=a10, a[11]=a11, a[12]=a12, a[13]=a13, a[14]=a14, a[15]=a15,
+            b[0]=d0, b[1]=d1, b[2]=d2, b[3]=d3, b[4]=d4, b[5]=d5, b[6]=d6, b[7]=d7, b[8]=d8, b[9]=d9, b[10]=d10, b[11]=d11, b[12]=d12, b[13]=d13, b[14]=d14, b[15]=d15,
+            sel=store,
+            out[0]=b0, out[1]=b1, out[2]=b2, out[3]=b3, out[4]=b4, out[5]=b5, out[6]=b6, out[7]=b7, out[8]=b8, out[9]=b9, out[10]=b10, out[11]=b11, out[12]=b12, out[13]=b13, out[14]=b14, out[15]=b15);
+
+        Bit(in=b0, load=true, out=out[0], out=c0);
+        Bit(in=b1, load=true, out=out[1], out=c1);
+        Bit(in=b2, load=true, out=out[2], out=c2);
+        Bit(in=b3, load=true, out=out[3], out=c3);
+        Bit(in=b4, load=true, out=out[4], out=c4);
+        Bit(in=b5, load=true, out=out[5], out=c5);
+        Bit(in=b6, load=true, out=out[6], out=c6);
+        Bit(in=b7, load=true, out=out[7], out=c7);
+        Bit(in=b8, load=true, out=out[8], out=c8);
+        Bit(in=b9, load=true, out=out[9], out=c9);
+        Bit(in=b10, load=true, out=out[10], out=c10);
+        Bit(in=b11, load=true, out=out[11], out=c11);
+        Bit(in=b12, load=true, out=out[12], out=c12);
+        Bit(in=b13, load=true, out=out[13], out=c13);
+        Bit(in=b14, load=true, out=out[14], out=c14);
+        Bit(in=b15, load=true, out=out[15], out=c15);
+
+        Add16(a[0]=c0, a[1]=c1, a[2]=c2, a[3]=c3, a[4]=c4, a[5]=c5, a[6]=c6, a[7]=c7, a[8]=c8, a[9]=c9, a[10]=c10, a[11]=c11, a[12]=c12, a[13]=c13, a[14]=c14, a[15]=c15,
+        b[0]=inc,
+        out[0]=d0, out[1]=d1, out[2]=d2, out[3]=d3, out[4]=d4, out[5]=d5, out[6]=d6, out[7]=d7, out[8]=d8, out[9]=d9, out[10]=d10, out[11]=d11, out[12]=d12, out[13]=d13, out[14]=d14, out[15]=d15);
+}
