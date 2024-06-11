@@ -15,3 +15,6 @@
 !06/HackAssembler/*.cs
 !06/HackAssembler/*.csproj
 !06/HackAssembler/*.sln
+!07/HackTranslator/*.cs
+!07/HackTranslator/*.csproj
+!07/HackTranslator/*.sln
