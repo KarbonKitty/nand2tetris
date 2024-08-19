@@ -21,3 +21,6 @@
 !08/HackTranslator/*.cs
 !08/HackTranslator/*.csproj
 !08/HackTranslator/*.sln
+!10/JackCompiler/*.sln
+!10/JackCompiler/*.csproj
+!10/JackCompiler/*.cs
