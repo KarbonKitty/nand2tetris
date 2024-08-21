@@ -1,8 +1,8 @@
-﻿using System.Text;
+﻿using System.Xml.Linq;
 
 namespace JackCompiler;
 
-public class Program
+public static class Program
 {
     public static int Main(string[] args)
     {
@@ -13,7 +13,9 @@ public class Program
         {
             foreach (var f in Directory.EnumerateFiles(path, "*.jack"))
             {
-                Tokenize(f);
+                var tokens = Tokenize(f);
+                var parseTree = Compile(tokens);
+                WriteFile(f, parseTree);
             }
         }
         else
@@ -24,144 +26,40 @@ public class Program
         return 0;
     }
 
-    private static void Tokenize(string path)
+    private static List<Token> Tokenize(string path)
     {
         var file = File.ReadAllText(path);
         var tokenizer = new JackTokenizer{ OriginalFile = file };
         tokenizer.ProcessFile();
-        tokenizer.WriteFile(path.Replace(".jack", "Tokenized.xml"));
+        return tokenizer.Tokens;
+        //tokenizer.WriteFile(path.Replace(".jack", "Tokenized.xml"));
     }
-}
 
-public class JackTokenizer
-{
-    public static readonly string[] Keywords = [ "class", "method", "function", "function", "constructor", "int", "boolean", "char", "void", "var", "static", "field", "let", "do", "if", "else", "while", "return", "true", "false", "null", "this" ];
-
-    public required string OriginalFile { get; init; }
-
-    int CurrentIndex { get; set; }
-
-    public List<Token> Tokens { get; set; } = [];
-
-    public void ProcessFile()
+    private static ParseNode Compile(List<Token> tokens)
     {
-        CurrentIndex = 0;
-
-        while (CurrentIndex < OriginalFile.Length)
-        {
-            var currentCharacter = OriginalFile[CurrentIndex];
-            var result = currentCharacter switch
-            {
-                '"' => HandleDoubleQuote(),
-                '\r' or '\n' or ' ' => Advance(),
-                '{' or '}' or '[' or ']' or '(' or ')' or '.' or ',' or ';' or '+' or '-' or '*' or '/' or '&' or '|' or '<' or '>' or '=' or '~' => HandleSymbol(currentCharacter),
-                '0' or '1' or '2' or '3' or '4' or '5' or '6' or '7' or '8' or '9' => HandleDigit(currentCharacter),
-                _ => HandleOtherChar()
-            };
-            if (result is not null)
-            {
-                Tokens.Add(result);
-            }
-        }
+        var compiler = new CompilationEngine { Tokens = tokens };
+        compiler.Compile();
+        return compiler.RootNode!;
     }
 
-    public void WriteFile(string path)
+    private static void WriteFile(string path, ParseNode parseTree)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("<tokens>");
-        foreach (var t in Tokens)
-        {
-            sb.AppendLine($"<{t.Type.ToString().ToLower()}> {t.Value.Replace("&", "&amps;").Replace(">", "&gt;").Replace("<", "&lt;")} </{t.Type.ToString().ToLower()}>");
-        }
-        sb.AppendLine("</tokens>");
-        File.WriteAllText(path, sb.ToString());
+        var doc = new XDocument(
+            parseTree.ToXml()
+        );
+        doc.Save(path.Replace(".jack", "Parsed.xml"));
     }
 
-    private Token? HandleDoubleQuote()
+    public static XElement ToXml(this ParseNode parseNode)
     {
-        var startIndex = CurrentIndex;
-        var lastChar = Consume();
-        var c = Consume();
-        while (c != '"' || (c == '"' && lastChar == '\\'))
+        if (parseNode.Value is not null)
         {
-            lastChar = c;
-            c = Consume();
+            return new XElement(parseNode.Type.ToString(), parseNode.Value.Value);
         }
-        return new Token { Type = TokenType.StringConst, Value = OriginalFile[(startIndex + 1)..CurrentIndex] };
+
+        var subElements = parseNode.SubNodes.Select(ToXml);
+        return new XElement(parseNode.Type.ToString("G"), subElements);
     }
-
-    private Token? Advance()
-    {
-        CurrentIndex++;
-        return null;
-    }
-
-    private Token? HandleSymbol(char character)
-    {
-        if (character == '/' && (PeekNext() == '/' || PeekNext() == '*'))
-        {
-            return HandleComment();
-        }
-        var c = Consume();
-        return new() { Type = TokenType.Symbol, Value = c.ToString() };
-    }
-
-    private Token? HandleComment()
-    {
-        Consume();
-        var c = Consume();
-        if (c == '/')
-        {
-            while (c != '\n')
-            {
-                c = Consume();
-            }
-            return null;
-        }
-        else
-        {
-            var lastChar = '\0';
-            while (c != '/' || (lastChar != '*'))
-            {
-                lastChar = c;
-                c = Consume();
-            }
-            return null;
-        }
-    }
-
-    private Token? HandleDigit(char character)
-    {
-        var startIndex = CurrentIndex;
-        var c = Consume();
-        while (char.IsDigit(PeekCurrent()))
-        {
-            c = Consume();
-        }
-        return new Token { Type = TokenType.IntConst, Value = OriginalFile[startIndex..CurrentIndex] };
-    }
-
-    private Token? HandleOtherChar()
-    {
-        var startIndex = CurrentIndex;
-        var c = Consume();
-        while (char.IsAsciiLetterOrDigit(PeekCurrent()) || PeekCurrent() == '_')
-        {
-            c = Consume();
-        }
-        var s = OriginalFile[startIndex .. CurrentIndex];
-        var type = Keywords.Contains(s) ? TokenType.Keyword : TokenType.Identifier;
-        return new Token { Type = type, Value = s };
-    }
-
-    private char PeekNext()
-        => OriginalFile[CurrentIndex + 1];
-
-    private char PeekCurrent()
-        => OriginalFile[CurrentIndex];
-
-    private char Consume()
-        => OriginalFile[CurrentIndex++];
 }
 
 public record Token
@@ -173,11 +71,11 @@ public record Token
 public enum TokenType
 {
     None,
-    Keyword,
-    Identifier,
-    Symbol,
-    IntConst,
-    StringConst
+    keyword,
+    identifier,
+    symbol,
+    intConst,
+    stringConst
 }
 
 public enum Keyword
