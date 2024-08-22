@@ -13,26 +13,25 @@ public static class Program
         {
             foreach (var f in Directory.EnumerateFiles(path, "*.jack"))
             {
-                var tokens = Tokenize(f);
-                var parseTree = Compile(tokens);
-                WriteFile(f, parseTree);
+                Parse(f);
             }
         }
         else
         {
-            Tokenize(path);
+            Parse(path);
         }
 
         return 0;
     }
 
-    private static List<Token> Tokenize(string path)
+    private static void Parse(string path)
     {
         var file = File.ReadAllText(path);
-        var tokenizer = new JackTokenizer{ OriginalFile = file };
+        var tokenizer = new JackTokenizer { OriginalFile = file };
         tokenizer.ProcessFile();
-        return tokenizer.Tokens;
-        //tokenizer.WriteFile(path.Replace(".jack", "Tokenized.xml"));
+        var tokens = tokenizer.Tokens;
+        var parseTree = Compile(tokens);
+        WriteFile(path, parseTree);
     }
 
     private static ParseNode Compile(List<Token> tokens)

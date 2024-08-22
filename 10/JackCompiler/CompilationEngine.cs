@@ -1,3 +1,5 @@
+using Microsoft.VisualBasic;
+
 namespace JackCompiler;
 
 public class CompilationEngine
@@ -18,15 +20,8 @@ public class CompilationEngine
 
     public void Compile()
     {
-        RootNode = CompileClass(); // single class per file ?
-        // while (CurrentIndex < Tokens.Count)
-        // {
-        //     var node = Tokens[CurrentIndex] switch {
-        //         { Type: TokenType.Keyword, Value: "class" } => CompileClass(),
-        //         _ => throw new InvalidOperationException("code only legal in class")
-        //     };
-        // }
-
+        // TODO: allow multiple classes per file?
+        RootNode = CompileClass();
     }
 
     private ParseNode CompileClass()
@@ -66,7 +61,8 @@ public class CompilationEngine
 
     private ParseNode CompileClassVarDec()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.classVarDec,
             SubNodes = [
                 ConsumeToken(TokenType.keyword), // it can be either 'static' or 'field'
@@ -116,7 +112,8 @@ public class CompilationEngine
 
     private ParseNode CompileSubroutineDec()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.subroutineDec,
             SubNodes = [
                 ConsumeToken(TokenType.keyword),
@@ -132,7 +129,8 @@ public class CompilationEngine
 
     private ParseNode CompileSubroutineBody()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.subroutineBody,
             SubNodes = [
                 ConsumeToken(TokenType.symbol, "{"),
@@ -155,7 +153,8 @@ public class CompilationEngine
 
     private ParseNode CompileVarDec()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.varDec,
             SubNodes = [
                 ConsumeKeyword("var"),
@@ -169,7 +168,8 @@ public class CompilationEngine
 
     private ParseNode CompileStatements()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.statements,
             SubNodes = [
                 ..CompileZeroOrMore(TryCompileStatement)
@@ -184,7 +184,8 @@ public class CompilationEngine
             currentToken.Value is "let" or "if" or "while" or "do" or "return"
         ))
         {
-            return currentToken switch {
+            return currentToken switch
+            {
                 { Value: "let" } => CompileLetStatement(),
                 { Value: "if" } => CompileIfStatement(),
                 { Value: "while" } => CompileWhileStatement(),
@@ -198,7 +199,8 @@ public class CompilationEngine
 
     private ParseNode CompileReturnStatement()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.returnStatement,
             SubNodes = [
                 ConsumeKeyword("return"),
@@ -206,7 +208,7 @@ public class CompilationEngine
                 ConsumeSymbol(";")
             ]
         };
-        
+
         IEnumerable<ParseNode> TryCompileExpression()
         {
             var currentToken = Peek();
@@ -220,46 +222,21 @@ public class CompilationEngine
 
     private ParseNode CompileDoStatement()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.doStatement,
             SubNodes = [
                 ConsumeKeyword("do"),
-                // subroutine call
-                ..ConsumeSubroutineName(),
-                ConsumeSymbol("("),
-                ..TryCompileExpressions(),
-                ConsumeSymbol(")"),
-                // end subroutine call
+                ..CompileSubroutineCall(),
                 ConsumeSymbol(";")
             ]
         };
-
-        IEnumerable<ParseNode> ConsumeSubroutineName()
-        {
-            yield return ConsumeIdentifier();
-            // if next token is '.', we are calling a method, otherwise a function
-            var currentToken = Peek();
-            if (currentToken.Type == TokenType.symbol && currentToken.Value == ".")
-            {
-                yield return ConsumeSymbol(".");
-                yield return ConsumeIdentifier();
-            }
-        }
-
-        IEnumerable<ParseNode> TryCompileExpressions()
-        {
-            var currentToken = Peek();
-            while (!(currentToken.Type == TokenType.symbol && currentToken.Value == ")"))
-            {
-                yield return CompileExpression();
-                currentToken = Peek();
-            }
-        }
     }
 
     private ParseNode CompileWhileStatement()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.whileStatement,
             SubNodes = [
                 ConsumeKeyword("while"),
@@ -275,7 +252,8 @@ public class CompilationEngine
 
     private ParseNode CompileIfStatement()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.ifStatement,
             SubNodes = [
                 ConsumeKeyword("if"),
@@ -317,17 +295,28 @@ public class CompilationEngine
 
     private ParseNode CompileLetStatement()
     {
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.letStatement,
             SubNodes = [
                 ConsumeToken(TokenType.keyword, "let"),
                 ConsumeToken(TokenType.identifier), // var name
-                // TODO: array-oriented expression
+                ..TryCompileArrayAccess(),
                 ConsumeToken(TokenType.symbol, "="),
                 CompileExpression(),
                 ConsumeToken(TokenType.symbol, ";")
             ]
         };
+
+        IEnumerable<ParseNode> TryCompileArrayAccess()
+            =>
+            (Peek() is { Type: TokenType.symbol, Value: "["}) ?
+            [
+                ConsumeSymbol("["),
+                CompileExpression(),
+                ConsumeSymbol("]")
+            ]
+            : [];
     }
 
     private ParseNode CompileParameterList()
@@ -337,7 +326,8 @@ public class CompilationEngine
         {
             return new ParseNode { Type = ParseNodeType.parameterList };
         }
-        return new ParseNode {
+        return new ParseNode
+        {
             Type = ParseNodeType.parameterList,
             SubNodes = [
                 ConsumeToken(), // type
@@ -348,8 +338,118 @@ public class CompilationEngine
         };
     }
 
+    private ParseNode CompileExpression()
+    {
+        return new ParseNode
+        {
+            Type = ParseNodeType.expression,
+            SubNodes = [
+                CompileTerm(),
+                ..ConsumeZeroOrMoreOps()
+            ]
+        };
+    }
+
+    private IEnumerable<ParseNode> ConsumeZeroOrMoreOps()
+    {
+        while (Peek() is { Type: TokenType.symbol, Value: "+" or "-" or "*" or "/" or "&" or "|" or "<" or ">" or "=" })
+        {
+            yield return ConsumeToken(TokenType.symbol);
+            yield return CompileTerm();
+        }
+    }
+
+    private ParseNode CompileTerm()
+    {
+        var currentToken = Peek();
+        return new ParseNode
+        {
+            Type = ParseNodeType.term,
+            SubNodes = currentToken switch
+            {
+                { Type: TokenType.intConst } => [ConsumeToken(TokenType.intConst)],
+                { Type: TokenType.stringConst } => [ConsumeToken(TokenType.stringConst)],
+                { Type: TokenType.keyword } => [ConsumeKeyword()], // 'null' or 'this'
+                { Type: TokenType.symbol, Value: "-" or "~" } => [
+                    ConsumeSymbol(),
+                    CompileTerm()
+                    ],
+                { Type: TokenType.symbol, Value: "(" } => [
+                    ConsumeSymbol("("),
+                    CompileExpression(),
+                    ConsumeSymbol(")")
+                    ],
+                { Type: TokenType.identifier } => [
+                    ..(PeekNext() switch {
+                        { Type: TokenType.symbol, Value: "[" } => CompileArrayAccess(),
+                        { Type: TokenType.symbol, Value: "." } => CompileSubroutineCall(),
+                        _ => [ConsumeIdentifier()]
+                    })
+                ]
+            }
+        };
+
+        IEnumerable<ParseNode> CompileArrayAccess()
+            =>
+            [
+                ConsumeIdentifier(),
+                ConsumeSymbol("["),
+                CompileExpression(),
+                ConsumeSymbol("]")
+            ];
+    }
+
+    private IEnumerable<ParseNode> CompileSubroutineCall()
+    {
+        return [
+                ..ConsumeSubroutineName(),
+                ConsumeSymbol("("),
+                CompileExpressionList(),
+                ConsumeSymbol(")"),
+        ];
+
+        IEnumerable<ParseNode> ConsumeSubroutineName()
+        {
+            yield return ConsumeIdentifier();
+            // if next token is '.', we are calling a method, otherwise a function
+            var currentToken = Peek();
+            if (currentToken.Type == TokenType.symbol && currentToken.Value == ".")
+            {
+                yield return ConsumeSymbol(".");
+                yield return ConsumeIdentifier();
+            }
+        }
+
+        ParseNode CompileExpressionList()
+        {
+            return new ParseNode {
+                Type = ParseNodeType.expressionList,
+                SubNodes = [
+                    ..TryCompileExpressionList()
+                ]
+            };
+
+            IEnumerable<ParseNode> TryCompileExpressionList()
+            {
+                if (Peek() is { Type: TokenType.symbol, Value: ")" })
+                {
+                    yield break;
+                }
+                yield return CompileExpression();
+                while (Peek() is not { Type: TokenType.symbol, Value: ")" })
+                {
+                    yield return ConsumeSymbol(",");
+                    yield return CompileExpression();
+                }
+            }
+        }
+    }
+
     private Token Peek()
         => Tokens[CurrentIndex];
+
+    private Token PeekNext()
+        => Tokens[CurrentIndex + 1];
 
     private ParseNode ConsumeToken(TokenType? expectedType = null, string? expectedValue = null)
     {
@@ -359,17 +459,6 @@ public class CompilationEngine
             throw new InvalidDataException();
         }
         return new() { Type = TypeDict[t.Type], Value = t };
-    }
-
-    // TODO: replace with actual expression compilation
-    private ParseNode CompileExpression()
-    {
-        return new ParseNode {
-            Type = ParseNodeType.expression,
-            SubNodes = [
-                ConsumeToken() // it is sometimes 'this', which is a keyword, not identifier
-            ]
-        };
     }
 
     private ParseNode ConsumeKeyword(string? expectedValue = null)

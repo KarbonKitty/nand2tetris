@@ -22,7 +22,7 @@ public class JackTokenizer
             var result = currentCharacter switch
             {
                 '"' => HandleDoubleQuote(),
-                '\r' or '\n' or ' ' => Advance(),
+                '\r' or '\n' or ' ' or '\t' => Advance(),
                 '{' or '}' or '[' or ']' or '(' or ')' or '.' or ',' or ';' or '+' or '-' or '*' or '/' or '&' or '|' or '<' or '>' or '=' or '~' => HandleSymbol(currentCharacter),
                 '0' or '1' or '2' or '3' or '4' or '5' or '6' or '7' or '8' or '9' => HandleDigit(currentCharacter),
                 _ => HandleOtherChar()
@@ -32,18 +32,6 @@ public class JackTokenizer
                 Tokens.Add(result);
             }
         }
-    }
-
-    public void WriteFile(string path)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("<tokens>");
-        foreach (var t in Tokens)
-        {
-            sb.AppendLine($"<{t.Type.ToString().ToLower()}> {t.Value.Replace("&", "&amps;").Replace(">", "&gt;").Replace("<", "&lt;")} </{t.Type.ToString().ToLower()}>");
-        }
-        sb.AppendLine("</tokens>");
-        File.WriteAllText(path, sb.ToString());
     }
 
     private Token? HandleDoubleQuote()
@@ -56,7 +44,7 @@ public class JackTokenizer
             lastChar = c;
             c = Consume();
         }
-        return new Token { Type = TokenType.stringConst, Value = OriginalFile[(startIndex + 1)..CurrentIndex] };
+        return new Token { Type = TokenType.stringConst, Value = OriginalFile[(startIndex + 1)..(CurrentIndex - 1)] };
     }
 
     private Token? Advance()
