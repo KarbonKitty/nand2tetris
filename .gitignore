@@ -24,3 +24,6 @@
 !10/JackCompiler/*.sln
 !10/JackCompiler/*.csproj
 !10/JackCompiler/*.cs
+!11/JackCompiler/*.sln
+!11/JackCompiler/*.csproj
+!11/JackCompiler/*.cs
