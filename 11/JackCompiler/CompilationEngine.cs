@@ -33,7 +33,7 @@ public class CompilationEngine
             Type = ParseNodeType.@class,
             SubNodes = [
                     ConsumeToken(TokenType.keyword, "class"),
-                    ConsumeNewIdentifier(IdentifierCategory.Class),
+                    ConsumeNewIdentifier(IdentifierCategory.Class, string.Empty), // type will be extracted in the ConsumeNewIdentifier method
                     ConsumeToken(TokenType.symbol, "{"),
                     ..CompileZeroOrMore(TryCompileClassVarDec),
                     ..CompileZeroOrMore(TryCompileSubroutineDec),
@@ -67,14 +67,17 @@ public class CompilationEngine
     {
         var varTypeParseNode = ConsumeKeyword(); // either 'static' or 'field'
         var isStatic = varTypeParseNode.Value!.Value == "static";
+        var subNodes = new List<ParseNode>();
+        subNodes.Add(varTypeParseNode);
+        var typeNode = ConsumeToken(); // whatever type we allow
+        subNodes.Add(typeNode);
         return new()
         {
             Type = ParseNodeType.classVarDec,
             SubNodes = [
-                varTypeParseNode,
-                ConsumeToken(), // it can be whatever type we allow,
-                ConsumeNewIdentifier(isStatic ? IdentifierCategory.Static : IdentifierCategory.Field),
-                ..ConsumeZeroOrMoreVarNames(isStatic ? IdentifierCategory.Static : IdentifierCategory.Field),
+                ..subNodes,
+                ConsumeNewIdentifier(isStatic ? IdentifierCategory.Static : IdentifierCategory.Field, typeNode.Value!.Value),
+                ..ConsumeZeroOrMoreVarNames(isStatic ? IdentifierCategory.Static : IdentifierCategory.Field, typeNode.Value!.Value),
                 ConsumeToken(TokenType.symbol, ";")
                 ],
             Value = null
@@ -87,18 +90,19 @@ public class CompilationEngine
         while (Peek() is { Type: TokenType.symbol, Value: "," })
         {
             yield return ConsumeSymbol(",");
-            yield return ConsumeToken(); // type
-            yield return ConsumeNewIdentifier(IdentifierCategory.Arg);
+            var t = ConsumeToken();
+            yield return t; // type
+            yield return ConsumeNewIdentifier(IdentifierCategory.Arg, t.Value!.Value);
             parameterIndex++;
         }
     }
 
-    private IEnumerable<ParseNode> ConsumeZeroOrMoreVarNames(IdentifierCategory category)
+    private IEnumerable<ParseNode> ConsumeZeroOrMoreVarNames(IdentifierCategory category, string varType)
     {
         while (Peek() is { Type: TokenType.symbol, Value: "," })
         {
             yield return ConsumeSymbol(",");
-            yield return ConsumeNewIdentifier(category);
+            yield return ConsumeNewIdentifier(category, varType);
         }
     }
 
@@ -117,13 +121,20 @@ public class CompilationEngine
     private ParseNode CompileSubroutineDec()
     {
         SubroutineLevelTable = new SymbolTable();
+        var isMethod = Peek() is { Type: TokenType.keyword, Value: "method" };
+        if (isMethod)
+        {
+            SubroutineLevelTable.Define("this", "className", SymbolKind.Arg);
+        }
+        var subroutineKindNode = ConsumeKeyword();
+        var typeNode = ConsumeToken();
         return new ParseNode
         {
             Type = ParseNodeType.subroutineDec,
             SubNodes = [
-                ConsumeToken(TokenType.keyword),
-                ConsumeToken(), // void or type
-                ConsumeNewIdentifier(IdentifierCategory.Subroutine),
+                subroutineKindNode,
+                typeNode, // void or type
+                ConsumeNewIdentifier(IdentifierCategory.Subroutine, typeNode.Value!.Value),
                 ConsumeToken(TokenType.symbol, "("),
                 CompileParameterList(),
                 ConsumeToken(TokenType.symbol, ")"),
@@ -157,17 +168,21 @@ public class CompilationEngine
     }
 
     private ParseNode CompileVarDec()
-    => new()
     {
-        Type = ParseNodeType.varDec,
-        SubNodes = [
-                ConsumeKeyword("var"),
-                ConsumeToken(), // type
-                ConsumeNewIdentifier(IdentifierCategory.Var),
-                ..ConsumeZeroOrMoreVarNames(IdentifierCategory.Var),
+        var varNode = ConsumeKeyword("var");
+        var typeNode = ConsumeToken();
+        return new()
+        {
+            Type = ParseNodeType.varDec,
+            SubNodes = [
+                varNode,
+                typeNode,
+                ConsumeNewIdentifier(IdentifierCategory.Var, typeNode.Value!.Value),
+                ..ConsumeZeroOrMoreVarNames(IdentifierCategory.Var, typeNode.Value!.Value),
                 ConsumeSymbol(";")
-            ]
-    };
+                ]
+        };
+    }
 
     private ParseNode CompileStatements()
     {
@@ -325,12 +340,13 @@ public class CompilationEngine
         {
             return new ParseNode { Type = ParseNodeType.parameterList };
         }
+        var typeNode = ConsumeToken();
         return new ParseNode
         {
             Type = ParseNodeType.parameterList,
             SubNodes = [
-                ConsumeToken(), // type
-                ConsumeNewIdentifier(IdentifierCategory.Arg),
+                typeNode,
+                ConsumeNewIdentifier(IdentifierCategory.Arg, typeNode.Value!.Value),
                 ..ConsumeZeroOrMoreParameters()
             ],
             Value = null
@@ -471,9 +487,14 @@ public class CompilationEngine
         var i = -1;
 
         var kind = SubroutineLevelTable?.KindOf(name) ?? SymbolKind.None;
+        var varType = SubroutineLevelTable?.TypeOf(name) ?? string.Empty;
         if (kind == SymbolKind.None)
         {
             kind = ClassLevelTable.KindOf(name);
+        }
+        if (varType == string.Empty)
+        {
+            varType = ClassLevelTable.TypeOf(name);
         }
 
         if (kind is not SymbolKind.None)
@@ -498,32 +519,38 @@ public class CompilationEngine
             Type = ParseNodeType.identifier,
             Value = t.Value,
             Name = t.Value!.Value,
+            VarType = varType,
             Category = category,
             Declaration = false,
             Index = i
         };
     }
 
-    private Identifier ConsumeNewIdentifier(IdentifierCategory category)
+    private Identifier ConsumeNewIdentifier(IdentifierCategory category, string varType)
     {
         var t = ConsumeToken(TokenType.identifier);
         var name = t.Value!.Value;
         var i = -1;
+        if (category is IdentifierCategory.Class)
+        {
+            varType = name;
+        }
 
         // add to symbol table
         if (category is IdentifierCategory.Field or IdentifierCategory.Static)
         {
-            i = ClassLevelTable.Define(name, "test", category is IdentifierCategory.Static ? SymbolKind.Static : SymbolKind.Field);
+            i = ClassLevelTable.Define(name, varType, category is IdentifierCategory.Static ? SymbolKind.Static : SymbolKind.Field);
         }
         else if (category is IdentifierCategory.Arg or IdentifierCategory.Var)
         {
-            i = SubroutineLevelTable!.Define(name, "test", category is IdentifierCategory.Var ? SymbolKind.Var : SymbolKind.Arg);
+            i = SubroutineLevelTable!.Define(name, varType, category is IdentifierCategory.Var ? SymbolKind.Var : SymbolKind.Arg);
         }
 
         return new Identifier {
             Type = ParseNodeType.identifier,
             Value = t.Value,
             Name = t.Value!.Value,
+            VarType = varType,
             Category = category,
             Declaration = true,
             Index = i
@@ -541,6 +568,7 @@ public record Identifier : ParseNode
 {
     required public string Name { get; init; }
     required public IdentifierCategory Category { get; init; }
+    required public string VarType { get; init; }
     required public int Index { get; init; }
     required public bool Declaration { get; init; } // if not declaration, than usage
 }

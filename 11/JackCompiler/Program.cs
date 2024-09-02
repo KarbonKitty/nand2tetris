@@ -44,7 +44,7 @@ public static class Program
     private static void WriteFile(string path, List<string> vmCode)
     {
         var text = string.Join(Environment.NewLine, vmCode);
-        File.WriteAllText(path.Replace(".jack", "Parsed.vm"), text);
+        File.WriteAllText(path.Replace(".jack", ".vm"), text);
     }
 }
 

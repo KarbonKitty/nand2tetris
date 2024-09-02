@@ -10,13 +10,13 @@ public class VmWriter
 
     private int LabelIndex { get; set; } = 0;
     private string ClassName { get; set; }
+    private int NumFields { get; set; }
 
     public VmWriter(ParseNode rootNode)
     {
         ParseTree = rootNode;
     }
 
-    // TODO: stop emitting nodes that we are ignoring anyway?
     public void WriteVmCode()
     {
         ProcessClassNode(ParseTree);
@@ -25,6 +25,8 @@ public class VmWriter
     private void ProcessClassNode(ParseNode node)
     {
         ClassName = node.SubNodes.First(n => n is Identifier).Value!.Value;
+        var fieldsCount = node.SubNodes.Where(n => n.Type == ParseNodeType.classVarDec).Sum(n => n.SubNodes.Count(n => n is Identifier));
+        NumFields = fieldsCount;
         foreach (var n in node.SubNodes.Where(n => n.Type == ParseNodeType.subroutineDec))
         {
             ProcessSubroutineDeclarationNode(n);
@@ -33,21 +35,35 @@ public class VmWriter
 
     private void ProcessSubroutineDeclarationNode(ParseNode node)
     {
-        var id = node.SubNodes.First(n => n.Type == ParseNodeType.identifier);
+        var isConstructor = node.SubNodes.First().Value!.Value == "constructor";
+        var isMethod = node.SubNodes.First().Value!.Value == "method";
+
+        var id = node.SubNodes[2];
 
         var subroutineBody = node.SubNodes.First(n => n.Type == ParseNodeType.subroutineBody);
-        ProcessSubroutineBodyNode(subroutineBody, $"{ClassName}.{id.Value!.Value}");
+        ProcessSubroutineBodyNode(subroutineBody, $"{ClassName}.{id.Value!.Value}", isConstructor, isMethod);
     }
 
-    private void ProcessSubroutineBodyNode(ParseNode node, string identifier)
+    private void ProcessSubroutineBodyNode(ParseNode node, string identifier, bool isConstructor, bool isMethod)
     {
         var varDecs = node.SubNodes.Where(n => n.Type == ParseNodeType.varDec);
         var varCount = varDecs.Sum(n => n.SubNodes.Count(sn => sn is Identifier));
         VmCode.Add($"function {identifier} {varCount}");
+        if (isConstructor)
+        {
+            VmCode.Add($"push constant {NumFields}");
+            VmCode.Add("call Memory.alloc 1");
+            VmCode.Add("pop pointer 0");
+        }
+        else if (isMethod)
+        {
+            VmCode.Add("push argument 0");
+            VmCode.Add("pop pointer 0");
+        }
         var statements = node.SubNodes.First(n => n.Type == ParseNodeType.statements);
         ProcessStatementsNode(statements);
     }
-    
+
     private void ProcessStatementsNode(ParseNode node)
     {
         foreach (var statementNode in node.SubNodes)
@@ -102,7 +118,10 @@ public class VmWriter
         ProcessStatementsNode(node.SubNodes.First(n => n.Type == ParseNodeType.statements));
         VmCode.Add($"goto {endIfLabel}");
         VmCode.Add($"label {elseLabel}");
-        ProcessStatementsNode(node.SubNodes.Where(n => n.Type == ParseNodeType.statements).Skip(1).First());
+        if (node.SubNodes.Any(n => n is { Type: ParseNodeType.keyword, Value.Value: "else" }))
+        {
+            ProcessStatementsNode(node.SubNodes.Where(n => n.Type == ParseNodeType.statements).Skip(1).First());
+        }
         VmCode.Add($"label {endIfLabel}");
     }
 
@@ -116,16 +135,8 @@ public class VmWriter
 
     private void ProcessDoStatementNode(ParseNode node)
     {
-        // extract identifier
-        var identifier = node.SubNodes[1].Value!.Value;
-        if (node.SubNodes[2] is { Type: ParseNodeType.symbol, Value.Value: "." })
-        {
-            identifier = identifier + "." + node.SubNodes[3].Value!.Value;
-        }
-        var expressionList = node.SubNodes.First(n => n.Type == ParseNodeType.expressionList);
-        var argCount = ProcessExpressionList(expressionList);
-        // emit call
-        VmCode.Add($"call {identifier} {argCount}");
+        ProcessTerm(node with { SubNodes = node.SubNodes[1..] });
+        VmCode.Add("pop temp 0"); // ignore return value
     }
 
     private void ProcessReturnStatementNode(ParseNode node)
@@ -178,19 +189,35 @@ public class VmWriter
         }
         else if (firstNode is Identifier id)
         {
-            if (id.Category == IdentifierCategory.Class)
+            if (node.SubNodes.Any(n => n is { Value.Value: "(" }))
             {
-                // subroutine call
+                // this is a subroutine call
                 // extract identifier
-                var identifier = firstNode.Value!.Value;
-                if (node.SubNodes[1] is { Type: ParseNodeType.symbol, Value.Value: "." })
+                string identifier;
+                var isMethod = false;
+                var isTwoPartId = node.SubNodes[1] is { Type: ParseNodeType.symbol, Value.Value: "." };
+                var isFirstPartClassName = id.Category == IdentifierCategory.Class;
+                if (!isTwoPartId)
                 {
-                    identifier = identifier + "." + node.SubNodes[2].Value!.Value;
+                    identifier = $"{ClassName}.{id.Value!.Value}";
+                    VmCode.Add($"push pointer 0");
+                    isMethod = true;
+                }
+                else if (isFirstPartClassName)
+                {
+                    identifier = $"{id.Value!.Value}.{node.SubNodes[2].Value!.Value}";
+                }
+                else
+                {
+                    var relevantClassName = id.VarType;
+                    identifier = $"{relevantClassName}.{node.SubNodes[2].Value!.Value}";
+                    VmCode.Add($"push {IdentifierCategoryTranslator(id.Category)} {id.Index}");
+                    isMethod = true;
                 }
                 var expressionList = node.SubNodes.First(n => n.Type == ParseNodeType.expressionList);
                 var argCount = ProcessExpressionList(expressionList);
                 // emit call
-                VmCode.Add($"call {identifier} {argCount}");
+                VmCode.Add($"call {identifier} {argCount + (isMethod ? 1 : 0)}");
             }
             else
             {
@@ -220,6 +247,17 @@ public class VmWriter
         {
             VmCode.Add("push constant 0");
         }
+        else if (firstNode is { Type: ParseNodeType.keyword, Value.Value: "this" })
+        {
+            if (node.SubNodes.Count > 2 && node.SubNodes[1].Value?.Value == ".")
+            {
+                throw new NotImplementedException();
+            }
+            else
+            {
+                VmCode.Add("push pointer 0");
+            }
+        }
         else
         {
             throw new NotImplementedException("unexpected node when processing term");
@@ -244,6 +282,7 @@ public class VmWriter
         "&" => "and",
         "=" => "eq",
         ">" => "gt",
+        "<" => "lt",
         "-" => "sub",
         _ => throw new Exception("TODO")
     };
