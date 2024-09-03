@@ -128,9 +128,27 @@ public class VmWriter
     private void ProcessLetStatementNode(ParseNode node)
     {
         var identifierNode = node.SubNodes[1] as Identifier; // skip 'let'
-        ProcessExpression(node.SubNodes[3]); // skip '='
-        var memorySegment = IdentifierCategoryTranslator(identifierNode!.Category);
-        VmCode.Add($"pop {memorySegment} {identifierNode.Index}");
+        if (node.SubNodes[2] is { Value.Value: "=" })
+        {
+            ProcessExpression(node.SubNodes[3]); // skip '='
+            var memorySegment = IdentifierCategoryTranslator(identifierNode!.Category);
+            VmCode.Add($"pop {memorySegment} {identifierNode.Index}");
+        }
+        else if (node.SubNodes[2] is { Value.Value: "[" }) // array access
+        {
+            VmCode.Add($"push {IdentifierCategoryTranslator(identifierNode!.Category)} {identifierNode.Index}");
+            ProcessExpression(node.SubNodes[3]);
+            VmCode.Add("add");
+            ProcessExpression(node.SubNodes[6]); // we skip over irrelevant symbols
+            VmCode.Add("pop temp 0"); // save the right hand value
+            VmCode.Add("pop pointer 1"); // THAT
+            VmCode.Add("push temp 0"); // retrieve the saved value
+            VmCode.Add("pop that 0"); // save the right hand value to the correct location
+        }
+        else
+        {
+            throw new InvalidOperationException();
+        }
     }
 
     private void ProcessDoStatementNode(ParseNode node)
@@ -219,6 +237,15 @@ public class VmWriter
                 // emit call
                 VmCode.Add($"call {identifier} {argCount + (isMethod ? 1 : 0)}");
             }
+            else if (node.SubNodes.Any(n => n is { Value.Value: "[" }))
+            {
+                // this is an array access
+                VmCode.Add($"push {IdentifierCategoryTranslator(id.Category)} {id.Index}");
+                ProcessExpression(node.SubNodes.First(n => n is { Type: ParseNodeType.expression }));
+                VmCode.Add("add");
+                VmCode.Add("pop pointer 1");
+                VmCode.Add("push that 0");
+            }
             else
             {
                 VmCode.Add($"push {IdentifierCategoryTranslator(id.Category)} {id.Index}");
@@ -258,6 +285,17 @@ public class VmWriter
                 VmCode.Add("push pointer 0");
             }
         }
+        else if (firstNode is { Type: ParseNodeType.stringConst })
+        {
+            var strLength = firstNode.Value!.Value.Length;
+            VmCode.Add($"push constant {strLength}");
+            VmCode.Add("call String.new 1");
+            foreach (var c in firstNode.Value!.Value)
+            {
+                VmCode.Add($"push constant {(byte)c}");
+                VmCode.Add("call String.appendChar 2");
+            }
+        }
         else
         {
             throw new NotImplementedException("unexpected node when processing term");
@@ -284,6 +322,7 @@ public class VmWriter
         ">" => "gt",
         "<" => "lt",
         "-" => "sub",
+        "/" => "call Math.divide 2",
         _ => throw new Exception("TODO")
     };
 }
