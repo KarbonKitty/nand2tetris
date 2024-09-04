@@ -270,7 +270,7 @@ public class VmWriter
             VmCode.Add("push constant 1");
             VmCode.Add("neg");
         }
-        else if (firstNode is { Type: ParseNodeType.keyword, Value.Value: "false" })
+        else if (firstNode is { Type: ParseNodeType.keyword, Value.Value: "false" or "null" })
         {
             VmCode.Add("push constant 0");
         }
@@ -322,6 +322,7 @@ public class VmWriter
         ">" => "gt",
         "<" => "lt",
         "-" => "sub",
+        "|" => "or",
         "/" => "call Math.divide 2",
         _ => throw new Exception("TODO")
     };
