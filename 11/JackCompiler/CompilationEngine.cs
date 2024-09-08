@@ -397,7 +397,7 @@ public class CompilationEngine
                 { Type: TokenType.identifier } => [
                     ..(PeekNext() switch {
                         { Type: TokenType.symbol, Value: "[" } => CompileArrayAccess(),
-                        { Type: TokenType.symbol, Value: "." } => CompileSubroutineCall(),
+                        { Type: TokenType.symbol, Value: "." or "(" } => CompileSubroutineCall(),
                         _ => [ConsumeExistingIdentifier(false)]
                     })
                 ]
