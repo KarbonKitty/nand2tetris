@@ -8,26 +8,83 @@
  * consists of 32,768 words, each holding a 16-bit binary number.
  */ 
 class Memory {
+    static Array memory;
+    // pointer to the first free segment
+    // value at the pointer is the segment size
+    // next value in memory is the next pointer or 0 if last
+    static int freeList;
 
     /** Initializes the class. */
     function void init() {
+        let memory = 0;
+
+        let freeList = 2048;
+        let memory[freeList] = 14336;
+        let memory[freeList + 1] = 0;
+
+        return;
     }
 
     /** Returns the RAM value at the given address. */
     function int peek(int address) {
+        return memory[address];
     }
 
     /** Sets the RAM value at the given address to the given value. */
     function void poke(int address, int value) {
+        let memory[address] = value;
+        return;
     }
 
     /** Finds an available RAM block of the given size and returns
      *  a reference to its base address. */
     function int alloc(int size) {
+        var int freeListPtr, foundAddress, addressToUpdate;
+        let foundAddress = 0;
+        let addressToUpdate = -1;
+        let freeListPtr = freeList;
+
+        while (foundAddress = 0) {
+            if (memory[freeListPtr] > (size + 2)) {
+                let foundAddress = freeListPtr;
+            } else {
+                let addressToUpdate = freeListPtr + 1;
+                let freeListPtr = memory[freeListPtr + 1];
+                if (freeListPtr = 0) {
+                    do Sys.halt(); // out of memory
+                }
+            }
+        }
+
+        // reduce block size
+        if (memory[freeListPtr] = (size + 1)) {
+            // drop the block from the list of available blocks
+            let memory[addressToUpdate] = memory[freeListPtr + 1];
+        } else {
+            let memory[freeListPtr] = memory[freeListPtr] - (size + 1);
+            let foundAddress = foundAddress + memory[freeListPtr];
+        }
+
+        let memory[foundAddress] = size;
+        return (foundAddress + 1);
     }
 
     /** De-allocates the given object (cast as an array) by making
      *  it available for future allocations. */
     function void deAlloc(Array o) {
-    }    
+        var int currentAddress, nextAddress;
+        let currentAddress = freeList;
+        let nextAddress = memory[currentAddress + 1];
+
+        while (~(nextAddress = 0)) {
+            let currentAddress = nextAddress;
+            let nextAddress = memory[nextAddress + 1];
+        }
+
+        let memory[currentAddress + 1] = o;
+        let memory[o] = o[-1];
+        let memory[o + 1] = 0;
+
+        return;
+    }
 }
