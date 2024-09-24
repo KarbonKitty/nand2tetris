@@ -10,13 +10,11 @@
  *  using calls to OS functions in this class.
  */
 class Math {
-    static int n;             // Number of bits used for representing a two's complement integer
     static Array powersOfTwo; // Stores 2^0, 2^1, 2^2,..., 2^(n-1)
 
     // Initializes the Math library.
     function void init() {
         let powersOfTwo = Array.new(16);
-        let n = 16;
         let powersOfTwo[0] = 1;
         let powersOfTwo[1] = 2;
         let powersOfTwo[2] = 4;
@@ -32,7 +30,7 @@ class Math {
         let powersOfTwo[12] = 4096;
         let powersOfTwo[13] = 8192;
         let powersOfTwo[14] = 16384;
-        let powersOfTwo[15] = -32767;
+        let powersOfTwo[15] = 16384 + 16384;
         return;
     }
 
@@ -41,15 +39,13 @@ class Math {
      *  in an expression, it handles it by invoking this method. 
      *  Thus, in Jack, x * y and Math.multiply(x,y) return the same value. */
     function int multiply(int x, int y) {
-        var int sum, shiftedx, i, b;
+        var int sum, shiftedx, i;
         let i = 0;
         let sum = 0;
-        let b = 0;
         let shiftedx = x;
 
-        while (i < n) {
-            let b = bit(x, i);
-            if (b = true) {
+        while (i < 16) {
+            if (Math.bit(y, i)) {
                 let sum = sum + shiftedx;
             }
             let i = i + 1;
@@ -66,30 +62,49 @@ class Math {
     function int divide(int x, int y) {
         var int q;
 
+        if (y = 0) {
+            do Sys.error(3);
+            return 0; // does not actually happen
+        }
+
+        let q = Math._div(Math.abs(x), Math.abs(y));
+
+        if ((x < 0) = (y < 0)) {
+            return q;
+        } else {
+            return -q;
+        }
+    }
+
+    function int _div(int x, int y) {
+        var int q, dq;
+
         if (y > x) {
             return 0;
         }
 
-        let q = divide(x, y + y);
+        let q = Math.divide(x, y + y);
+        let dq = q + q;
 
-        if (((x - 2) * q * y) < y) {
-            return q + q;
+        if ((x - (dq * y)) < y) {
+            return dq;
         } else {
-            return q + q + 1;
+            return dq + 1;
         }
     }
 
     /** Returns the integer part of the square root of x. */
     function int sqrt(int x) {
         var int y, i;
-        var int temp;
+        var int temp, tsq;
         let y = 0;
-        let i = Math.divide(n, 2) - 1;
+        let i = 7;
 
-        while (i > 0) {
+        while (~(i < 0)) {
             let temp = y + powersOfTwo[i];
-            if ((temp + temp) < (x + 1)) {
-                let y = y + powersOfTwo[i];
+            let tsq = temp * temp;
+            if (~(tsq > x) & (tsq > 0)) {
+                let y = temp;
             }
             let i = i - 1;
         }
@@ -123,7 +138,7 @@ class Math {
         }
     }
 
-    function bool bit(int x, int i) {
-        return powersOfTwo[i] & x;
+    function boolean bit(int x, int i) {
+        return ~((x & powersOfTwo[i]) = 0);
     }
 }
